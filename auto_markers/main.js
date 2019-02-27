@@ -3,6 +3,28 @@ var enrolledCount = 0;
 var skilledCount = 0;
 var placedCount = 0;
 var labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+var xmlDoc;
+
+function loadMap(evt){
+    if (window.XMLHttpRequest){
+        // code for IE7+, Firefox, Chrome, Opera, Safari
+        xmlhttp=new XMLHttpRequest();
+    }
+    else {
+        // code for IE6, IE5
+        xmlhttp=new ActiveXObject("Microsoft.XMLHTTP");
+    }
+
+    xmlhttp.onload = function() {
+        xmlDoc = new DOMParser().parseFromString(xmlhttp.responseText,'text/xml');
+        console.log(xmlDoc);
+    }
+
+    path = document.getElementById('map').file;
+    console.log(path);
+    xmlhttp.open("GET", path);
+    xmlhttp.send();
+}
 
 // reads a file
 function startRead(evt) {

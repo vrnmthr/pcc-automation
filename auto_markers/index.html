@@ -7,7 +7,9 @@
     </head>
     <body>
         <h2>Choose a file below, and the map will automatically populate!</h2>
-        <input type="file" id="file" name="files[]" multiple onchange="startRead()"/>
-        <div id="map"></div>
+        <p>Upload the existing map file below:</p>
+        <input type="file" id="map" name="file" onchange="loadMap()"/>
+        <p>Upload any number of marker files to add to the map</p> 
+        <input type="file" id="" name="files[]" multiple onchange="startRead()"/>
     </body>
 </html>
