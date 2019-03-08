@@ -13,6 +13,8 @@ import csv
 import os
 import tkinter.filedialog
 import xml.etree.ElementTree as ET
+import re
+import printer
 
 
 def parse_map(root):
@@ -40,7 +42,7 @@ def parse_map(root):
                 for placemark in placemarks:
                     name = placemark.find("./{http://www.opengis.net/kml/2.2}name").text.strip().lower()
                     if name in markers:
-                        print("WARNING: duplicated name {} detected".format(name))
+                        print(printer.fail_string("WARNING: duplicated marker {} detected".format(name)))
                     # category is the parent of the marker which we will need to remove from
                     markers[name] = category
             locale_map[locale_name] = category_map
@@ -49,53 +51,12 @@ def parse_map(root):
     return data, markers
 
 
-# # parse the entire map
-# map = ET.parse(map_path)
-# root = map.getroot()
-# folders = root.findall(".{http://www.opengis.net/kml/2.2}Document/{http://www.opengis.net/kml/2.2}Folder")
-# community_mapping = folders[-1]
-# lighthouses = community_mapping.findall("./{http://www.opengis.net/kml/2.2}Folder")
-# for lh in lighthouses:
-#
-#     locales = lh.findall("./{http://www.opengis.net/kml/2.2}Folder")
-#     for locale in locales:
-#         locale_name = locale.find("./{http://www.opengis.net/kml/2.2}name").text
-#         enrollment, skilling, placement = locale.findall("./{http://www.opengis.net/kml/2.2}Folder")
-#         locale_map[locale_name] = {'enrollment': enrollment, 'skilling': skilling, 'placement': placement}
-#     data[lh_name] = locale_map
-
-
 def get_placemark(name, lat, lng, status):
     styles = {
         'skilling': "#msn_shaded_dot000",
         'placement': "#msn_shaded_dot002",
         'enrollment': "#m_ylw-pushpin100",
     }
-    # placemark = ET.Element("Placemark")
-    # name_elem = ET.SubElement(placemark, "name")
-    # name_elem.text = name
-    #
-    # # create marker
-    # look_at = ET.SubElement(placemark, "LookAt")
-    # longitude = ET.SubElement(look_at, "longitude")
-    # latitude = ET.SubElement(look_at, "latitude")
-    # altitude = ET.SubElement(look_at, "altitude")
-    # heading = ET.SubElement(look_at, "heading")
-    # tilt = ET.SubElement(look_at, "tilt")
-    # range_elem = ET.SubElement(look_at, "range")
-    # gx = ET.SubElement(look_at, "gx")
-    # gx.set
-    #
-    # # fill in properties
-    # longitude.text = lng
-    # latitude.text = lat
-    # altitude.text = 0
-    # heading.text = "8.477988743497458e-005"
-    # tilt.text = "28.80817332026854"
-    # range_elem.text = 146.3098415937417
-    # # TODO: how to create
-    # gx.text = "relativeToSeaFloor"
-
 
     template = """
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2">
@@ -130,7 +91,7 @@ def add_to_map(name, lat, lng, status, lh_name, locale_name):
         new_elem = get_placemark(name, lat, lng, status)
         elem.append(new_elem)
     except KeyError:
-        print("ERROR: could not find {} folder for locale {} in lighthouse {}".format(status, locale_name, lh_name))
+        print(printer.fail_string("ERROR: could not find {} folder for locale {} in lighthouse {}".format(status, locale_name, lh_name)))
 
 
 def delete_marker(name, markers):
@@ -142,20 +103,29 @@ def delete_marker(name, markers):
     for placemark in placemarks:
         elem = placemark.find("./{http://www.opengis.net/kml/2.2}name").text
         if elem == name:
-            parent.remove(elem)
+            parent.remove(placemark)
 
 
 def parse_lat_lng(raw):
-    raw = raw.strip()
-    parts = raw.split("°")
-    integer = parts[0]
-    decimal = ''.join([c for c in parts[1] if c not in '\'".NESW'])
-    return "{}.{}".format(integer, decimal)
+    """
+    Converts string representation in degrees/minutes/seconds into decimal
+    """
+    parts = re.split(r'[°\'"]', raw.strip())
+    degrees = float(parts[0])
+    minutes = float(parts[1])
+    seconds = float(parts[2])
+    return degrees + minutes / 60 + seconds / 3600
 
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("--output", default="output.kml", help="path to the file you wish the output to be written to")
+    parser.add_argument("--erase", action='store_true', help="erase all the previous markers from this map")
+
+    args = vars(parser.parse_args())
+    if not args["output"].endswith(".kml"):
+        args["output"] += ".kml"
 
     print("Select the map file:")
     root = tkinter.Tk()
@@ -175,6 +145,11 @@ if __name__ == '__main__':
     root = map.getroot()
     data, markers = parse_map(root)
 
+    if args['erase']:
+        for name in markers:
+            print(printer.fail_string("ERASING MARKER: {}").format(name))
+            delete_marker(name, markers)
+
     for marker_file in marker_files:
         with open(marker_file, 'r') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
@@ -182,13 +157,17 @@ if __name__ == '__main__':
                 ix, name, lat, lng, lh_name, locale_name, status = row
                 lat = parse_lat_lng(lat)
                 lng = parse_lat_lng(lng)
+                name = name.strip().lower()
                 lh_name = lh_name.strip().lower()
                 locale_name = locale_name.strip().lower()
                 status = status.strip().lower()
                 if name in markers:
-                    print("{} already found in map. Overwriting with new data...".format(name))
+                    print(printer.warning_string("OVERWRITING MARKER: {}".format(name)))
                     delete_marker(name, markers)
-                add_to_map(name, lat, lng, status, lh_name, locale_name)
+                    add_to_map(name, lat, lng, status, lh_name, locale_name)
+                else:
+                    add_to_map(name, lat, lng, status, lh_name, locale_name)
+                    print(printer.green_string("ADDED MARKER: {}".format(name)))
 
-    map.write("output.xml")
-    print("FINISHED!")
+    map.write(args['output'])
+    print(printer.blue_string("FINISHED!"))
