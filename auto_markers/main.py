@@ -1,7 +1,7 @@
 """
 Will take in an existing map file and a CSV set of markers.
 If --erase specified, will completely erase the previous map of markers
-If --erase, will attempt to intelligently merge all the new markers into the old map.
+If not --erase, will attempt to intelligently merge all the new markers into the old map.
 The merge strategy is as follows:
 - If the person is not included at all in the map, add them as specified
 - If the person is included already in the map, delete their old marker and add a new marker
@@ -11,9 +11,10 @@ The merge strategy is as follows:
 import argparse
 import csv
 import os
+import re
 import tkinter.filedialog
 import xml.etree.ElementTree as ET
-import re
+
 import printer
 
 
@@ -91,7 +92,22 @@ def add_to_map(name, lat, lng, status, lh_name, locale_name):
         new_elem = get_placemark(name, lat, lng, status)
         elem.append(new_elem)
     except KeyError:
-        print(printer.fail_string("ERROR: could not find {} folder for locale {} in lighthouse {}".format(status, locale_name, lh_name)))
+        print(printer.fail_string(
+            "ERROR: could not find {} folder for locale {} in lighthouse {}".format(status, locale_name, lh_name)))
+
+
+def delete_all_markers():
+    for lh_name in data:
+        lh = data[lh_name]
+        for locale_name in lh:
+            locale = lh[locale_name]
+            for status in locale:
+                folder = locale[status]
+                placemarks = folder.findall("./{http://www.opengis.net/kml/2.2}Placemark")
+                for placemark in placemarks:
+                    name = placemark.find("./{http://www.opengis.net/kml/2.2}name").text.strip().lower()
+                    print(printer.fail_string("ERASING MARKER: {}").format(name))
+                    folder.remove(placemark)
 
 
 def delete_marker(name, markers):
@@ -101,8 +117,9 @@ def delete_marker(name, markers):
     parent = markers[name]
     placemarks = parent.findall("./{http://www.opengis.net/kml/2.2}Placemark")
     for placemark in placemarks:
-        elem = placemark.find("./{http://www.opengis.net/kml/2.2}name").text
+        elem = placemark.find("./{http://www.opengis.net/kml/2.2}name").text.strip().lower()
         if elem == name:
+            print(printer.fail_string("ERASING MARKER: {}").format(name))
             parent.remove(placemark)
 
 
@@ -141,14 +158,16 @@ if __name__ == '__main__':
     marker_files = tkinter.filedialog.askopenfilenames(initialdir=os.path.expanduser("~"))
     root.update()
 
+    # map_path = "/Users/vrnmthr/Source/pcc-automation/auto_markers/pcc-formatted.xml"
+    # marker_files = ["example.csv"]
+
     map = ET.parse(map_path)
     root = map.getroot()
     data, markers = parse_map(root)
 
     if args['erase']:
-        for name in markers:
-            print(printer.fail_string("ERASING MARKER: {}").format(name))
-            delete_marker(name, markers)
+        delete_all_markers()
+        markers = {}
 
     for marker_file in marker_files:
         with open(marker_file, 'r') as csvfile:
@@ -157,17 +176,17 @@ if __name__ == '__main__':
                 ix, name, lat, lng, lh_name, locale_name, status = row
                 lat = parse_lat_lng(lat)
                 lng = parse_lat_lng(lng)
-                name = name.strip().lower()
+                processed_name = name.strip().lower()
                 lh_name = lh_name.strip().lower()
                 locale_name = locale_name.strip().lower()
                 status = status.strip().lower()
-                if name in markers:
-                    print(printer.warning_string("OVERWRITING MARKER: {}".format(name)))
-                    delete_marker(name, markers)
+                if processed_name in markers:
+                    print(printer.warning_string("OVERWRITING MARKER: {}".format(processed_name)))
+                    delete_marker(processed_name, markers)
                     add_to_map(name, lat, lng, status, lh_name, locale_name)
                 else:
                     add_to_map(name, lat, lng, status, lh_name, locale_name)
-                    print(printer.green_string("ADDED MARKER: {}".format(name)))
+                    print(printer.green_string("ADDED MARKER: {}".format(processed_name)))
 
     map.write(args['output'])
     print(printer.blue_string("FINISHED!"))
